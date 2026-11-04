@@ -1,0 +1,92 @@
+name: AgentAlvine guide
+
+on:
+  push:
+  issues:
+    types: [opened, edited, reopened]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows: ['Workshop quality', 'Learner checks', 'Workshop delivery', 'Workshop cleanup']
+    types: [completed]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only source preview; never starts or grades an Exercise
+        required: true
+        type: choice
+        options: [Preview]
+        default: Preview
+
+# Repository-wide serialization is deliberately stronger than issue-only locking:
+# it also serializes first-issue registration. Pending event coalescing is handled
+# by reading current metadata and unconsumed comments after the active gate.
+concurrency:
+  group: agentalvine-${{ github.repository_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  preview:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.mode == 'Preview' &&
+      github.workflow_ref == format('{0}/.github/workflows/guide.yml@refs/heads/{1}', github.repository, github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out only the trusted default branch
+        id: trusted
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Render a read-only Preview
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          GUIDE_CHECKOUT_SHA: ${{ steps.trusted.outputs.commit }}
+        with:
+          script: |
+            const guide = require(`${process.env.GITHUB_WORKSPACE}/.github/agentalvine/guide.cjs`);
+            await guide.run({ github, context, core });
+
+  guide:
+    if: >-
+      github.event_name != 'workflow_dispatch' &&
+      github.event.repository.private == true && github.event.repository.is_template != true &&
+      github.repository != 'alvinea28/lab-iac-ws2-terraform-github-actions-azure' &&
+      github.workflow_ref == format('{0}/.github/workflows/guide.yml@refs/heads/{1}', github.repository, github.event.repository.default_branch) &&
+      (github.event_name == 'workflow_run' || github.event.sender.type == 'User')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      issues: write
+    steps:
+      # Never substitute a PR head, workflow_run head, artifact, or learner ref.
+      # No npm install, shell, PR execution, dispatch, Azure/OIDC or secrets here.
+      - name: Check out only the trusted default branch
+        id: trusted
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Observe trusted metadata and update the one Exercise
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          GUIDE_CHECKOUT_SHA: ${{ steps.trusted.outputs.commit }}
+          WORKSHOP_LEARNER_USER_IDS: ${{ vars.WORKSHOP_LEARNER_USER_IDS }}
+          WORKSHOP_OWNER_PROFILE_JSON: ${{ vars.WORKSHOP_OWNER_PROFILE_JSON }}
+          WORKSHOP_OWNER_PROFILE_SHA256: ${{ vars.WORKSHOP_OWNER_PROFILE_SHA256 }}
+        with:
+          script: |
+            const guide = require(`${process.env.GITHUB_WORKSPACE}/.github/agentalvine/guide.cjs`);
+            await guide.run({ github, context, core });

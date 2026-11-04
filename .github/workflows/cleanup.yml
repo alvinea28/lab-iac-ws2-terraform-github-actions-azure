@@ -1,0 +1,263 @@
+name: Workshop cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      authorization:
+        description: 'Authenticated admin only: destroy:<numeric repository ID>:<current main SHA>:<stateLockId>'
+        required: true
+        type: string
+
+permissions: {}
+concurrency:
+  group: ws2-state-${{ vars.WS2_STATE_LOCK_ID }}
+  cancel-in-progress: false
+
+# No push, schedule, issue/comment or delivery-triggered destruction. Backend,
+# bootstrap identities, grants, shared infrastructure and runners are not owned.
+env:
+  WORKSHOP_AZURE_ENABLED: ${{ vars.WORKSHOP_AZURE_ENABLED }}
+  WORKSHOP_RG_CREATION_APPROVED: ${{ vars.WORKSHOP_RG_CREATION_APPROVED }}
+  WORKSHOP_OWNER_PROFILE_JSON: ${{ vars.WORKSHOP_OWNER_PROFILE_JSON }}
+  WORKSHOP_OWNER_PROFILE_SHA256: ${{ vars.WORKSHOP_OWNER_PROFILE_SHA256 }}
+  WORKSHOP_BUDGET_CURRENCY: ${{ vars.WORKSHOP_BUDGET_CURRENCY }}
+  WORKSHOP_BUDGET_LIMIT_MINOR: ${{ vars.WORKSHOP_BUDGET_LIMIT_MINOR }}
+  WORKSHOP_EXPIRES_AT: ${{ vars.WORKSHOP_EXPIRES_AT }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+  PLAN_CLIENT_ID: ${{ vars.PLAN_CLIENT_ID }}
+  APPLY_CLIENT_ID: ${{ vars.APPLY_CLIENT_ID }}
+  STATE_RESOURCE_GROUP: ${{ vars.STATE_RESOURCE_GROUP }}
+  STATE_STORAGE_ACCOUNT: ${{ vars.STATE_STORAGE_ACCOUNT }}
+  STATE_CONTAINER: ${{ vars.STATE_CONTAINER }}
+  STATE_KEY: ${{ vars.STATE_KEY }}
+  WS2_STATE_LOCK_ID: ${{ vars.WS2_STATE_LOCK_ID }}
+  WORKSHOP_CONCURRENCY_GROUP: ws2-state-${{ vars.WS2_STATE_LOCK_ID }}
+  WORKSHOP_CANCEL_IN_PROGRESS: 'false'
+  OPERATION: destroy
+
+jobs:
+  validation:
+    name: Validate reviewed workshop revision
+    if: &eligible >-
+      vars.WORKSHOP_AZURE_ENABLED == 'true' && vars.WORKSHOP_RG_CREATION_APPROVED == 'true' &&
+      github.event.repository.private == true && github.event.repository.is_template == false &&
+      github.event.repository.fork == false && github.ref == 'refs/heads/main' && github.ref_protected &&
+      github.run_attempt == 1 && github.event_name == 'workflow_dispatch' &&
+      ((github.repository_id == '1379147533' && github.repository == 'alvine-aurelio-org/ws2-sim-20260921-network-module-laboratory-02') ||
+       (github.repository_id == '1379149907' && github.repository == 'alvine-aurelio-org/ws2-sim-20260921-azure-delivery-laboratory-07')) &&
+      github.workflow_ref == format('{0}/.github/workflows/cleanup.yml@refs/heads/main', github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - &checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - &node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.16.0
+      - &terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.16.1
+          terraform_wrapper: false
+      - &install
+        name: Install locked authoring dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - &install-app
+        name: Install locked production app before hashing
+        run: npm ci --prefix app --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Credential-free reviewed source and provider-mocked checks
+        run: node scripts/check.mjs
+      - name: Synthetic Node tests, never live cleanup
+        run: node --test --test-reporter=tap
+
+  preflight:
+    name: Verify scoped workshop policy
+    needs: validation
+    if: *eligible
+    runs-on: ubuntu-24.04
+    environment: workshop-plan
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      pull-requests: read
+    outputs:
+      operation: ${{ steps.checked.outputs.operation }}
+    steps:
+      - *checkout
+      - &controls
+        name: Verify protected owner pins before executing any repository control code
+        id: controls
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          WORKSHOP_CONTROL_SHA256_JSON: ${{ vars.WORKSHOP_CONTROL_SHA256_JSON }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const {createHash} = require('node:crypto');
+            const files = ['package.json','package-lock.json','scripts/delivery.mjs','scripts/package-app.mjs','scripts/azure-readback.mjs','scripts/deployment-authorization.cjs','scripts/inputs.mjs','scripts/plan-policy.mjs','scripts/plan-envelope.mjs'].sort();
+            const raw = process.env.WORKSHOP_CONTROL_SHA256_JSON;
+            if (!raw || raw.length > 16384) throw new Error('Missing separately owner-protected control source pins');
+            const pins = JSON.parse(raw);
+            if (!pins || Array.isArray(pins) || Object.keys(pins).sort().join('\0') !== files.join('\0')) throw new Error('Incorrect owner control pin inventory');
+            for (const file of files) {
+              const target = path.join(process.env.GITHUB_WORKSPACE, file);
+              const stat = fs.lstatSync(target);
+              if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > 4194304 || !/^[a-f0-9]{64}$/.test(pins[file]) || createHash('sha256').update(fs.readFileSync(target)).digest('hex') !== pins[file]) throw new Error('Owner-pinned control source bytes changed');
+            }
+            core.info('Owner-pinned control bytes verified before repository code import.');
+            core.setOutput('verified', 'true');
+      - *node
+      - *install
+      - *install-app
+      - name: Authenticate current admin, exact dispatch string, main and owner scope
+        id: checked
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const driver = await import(require('node:url').pathToFileURL(require('node:path').resolve('scripts/delivery.mjs')).href);
+            await driver.workflowMain('preflight', { github, context, core, authorize: require('./scripts/deployment-authorization.cjs').authorize });
+      - &readback
+        name: >-
+          AgentAlvine readback root=infra profile=ws2-personal-web-v1 owner=${{ steps.checked.outputs.owner_profile_sha256 }} participant=${{ steps.checked.outputs.participant_sha256 }} operation=${{ steps.checked.outputs.operation }} result=${{ steps.checked.outputs.result }}
+        if: success() && contains(fromJSON('["admitted","destroyed","absent"]'), steps.checked.outputs.result)
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          CHECKED_OWNER: ${{ steps.checked.outputs.owner_profile_sha256 }}
+          CHECKED_PARTICIPANT: ${{ steps.checked.outputs.participant_sha256 }}
+          CHECKED_OPERATION: ${{ steps.checked.outputs.operation }}
+          CHECKED_RESULT: ${{ steps.checked.outputs.result }}
+        with:
+          script: |
+            const e = process.env;
+            if (!/^[a-f0-9]{64}$/.test(e.CHECKED_OWNER || '') || !/^[a-f0-9]{64}$/.test(e.CHECKED_PARTICIPANT || '') || e.CHECKED_OPERATION !== 'destroy' || !['admitted','destroyed','absent'].includes(e.CHECKED_RESULT)) throw new Error('No completed scoped cleanup check');
+            core.info('The preceding scoped cleanup check completed; bootstrap retention remains mandatory.');
+      - &clean
+        name: Remove only this delivery session and local artifacts
+        if: always() && steps.controls.outputs.verified == 'true'
+        run: node scripts/delivery.mjs clean
+
+  plan:
+    # SECURITY INTEGRATION CONTRACT: the unchanged authorization helper hardcodes
+    # this generic job name for BOTH operations. The destroy-specific actual
+    # action below is distinctly named; parent guide must map this job honestly.
+    name: Create encrypted workshop plan
+    needs: [preflight, validation]
+    if: needs.preflight.result == 'success'
+    runs-on: [self-hosted, linux, x64, ws2-trusted]
+    environment: workshop-plan
+    timeout-minutes: 40
+    permissions: &cloud
+      contents: read
+      actions: read
+      checks: read
+      pull-requests: read
+      id-token: write
+    env:
+      ARM_CLIENT_ID: ${{ vars.PLAN_CLIENT_ID }}
+    outputs:
+      artifact: ${{ steps.checked.outputs.artifact }}
+      plan_sha256: ${{ steps.checked.outputs.plan_sha256 }}
+      manifest_sha256: ${{ steps.checked.outputs.manifest_sha256 }}
+      envelope_sha256: ${{ steps.checked.outputs.envelope_sha256 }}
+    steps:
+      - *checkout
+      - *controls
+      - *node
+      - *terraform
+      - *install
+      - *install-app
+      - name: Create encrypted workshop destroy plan
+        id: checked
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PLAN_ENCRYPTION_PUBLIC_KEY: ${{ vars.PLAN_ENCRYPTION_PUBLIC_KEY }}
+        with:
+          script: |
+            const driver = await import(require('node:url').pathToFileURL(require('node:path').resolve('scripts/delivery.mjs')).href);
+            await driver.workflowMain('plan', { github, context, core, authorize: require('./scripts/deployment-authorization.cjs').authorize });
+      - name: Save only the authenticated encrypted destroy-plan envelope
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.checked.outputs.artifact }}
+          path: .work/delivery/sealed/plan.enc
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+      - *clean
+
+  apply:
+    # Keep the actual generic name required by assertJobs; do NOT weaken the
+    # security helper or pretend a differently named job was admitted.
+    name: Apply exact workshop plan
+    needs: [preflight, validation, plan]
+    if: needs.preflight.result == 'success' && needs.plan.result == 'success'
+    runs-on: [self-hosted, linux, x64, ws2-trusted]
+    environment: workshop-apply
+    timeout-minutes: 45
+    permissions: *cloud
+    env:
+      ARM_CLIENT_ID: ${{ vars.APPLY_CLIENT_ID }}
+    steps:
+      - *checkout
+      - *controls
+      - *node
+      - *terraform
+      - *install
+      - *install-app
+      - name: Download only this authorized run's encrypted destroy plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ${{ needs.plan.outputs.artifact }}
+          path: .work/delivery/sealed
+      - name: Apply exact authorized workshop destroy plan
+        id: checked
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          EXPECTED_ARTIFACT: ${{ needs.plan.outputs.artifact }}
+          EXPECTED_PLAN_HASH: ${{ needs.plan.outputs.plan_sha256 }}
+          EXPECTED_MANIFEST_HASH: ${{ needs.plan.outputs.manifest_sha256 }}
+          EXPECTED_ENVELOPE_HASH: ${{ needs.plan.outputs.envelope_sha256 }}
+          PLAN_DECRYPTION_PRIVATE_KEY: ${{ secrets.PLAN_DECRYPTION_PRIVATE_KEY }}
+        with:
+          script: |
+            const driver = await import(require('node:url').pathToFileURL(require('node:path').resolve('scripts/delivery.mjs')).href);
+            await driver.workflowMain('apply', { github, context, core, authorize: require('./scripts/deployment-authorization.cjs').authorize });
+      - *readback
+      - *clean
+
+  final:
+    name: Verify workload absence
+    needs: [preflight, apply]
+    if: needs.preflight.result == 'success' && needs.apply.result == 'success'
+    runs-on: [self-hosted, linux, x64, ws2-trusted]
+    environment: workshop-plan
+    timeout-minutes: 20
+    permissions: *cloud
+    env:
+      ARM_CLIENT_ID: ${{ vars.PLAN_CLIENT_ID }}
+    steps:
+      - *checkout
+      - *controls
+      - *node
+      - *terraform
+      - *install
+      - *install-app
+      - name: Require actual known-RG 404 and empty Terraform-managed state
+        id: checked
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const driver = await import(require('node:url').pathToFileURL(require('node:path').resolve('scripts/delivery.mjs')).href);
+            await driver.workflowMain('verify-absence', { github, context, core, authorize: require('./scripts/deployment-authorization.cjs').authorize });
+      - *readback
+      - *clean

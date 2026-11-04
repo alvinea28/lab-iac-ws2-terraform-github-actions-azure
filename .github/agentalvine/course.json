@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "id": "ws2-personal-web-four-sections-v1",
+  "title": "Terraform, GitHub Actions and your workshop environment",
+  "persona": "AgentAlvine",
+  "issueTitle": "Exercise",
+  "sourceRepository": "alvinea28/lab-iac-ws2-terraform-github-actions-azure",
+  "sourceDefaultBranch": "dev",
+  "command": "proceed to next section",
+  "taskBranchPrefixes": ["lab/", "workshop/"],
+  "permittedPullRequestBases": ["dev", "main"],
+  "meaningfulPaths": ["exercise/participant.json", ".github/workflows/learner-checks.yml"],
+  "participantPath": "exercise/participant.json",
+  "learnerWorkflowPath": ".github/workflows/learner-checks.yml",
+  "canonicalWorkflowPath": "exercise/validation-workflow.yml",
+  "validatorPath": "scripts/inputs.mjs",
+  "ciTrustedPaths": ["package.json", "package-lock.json", "scripts/inputs.mjs", "scripts/check.mjs", "scripts/terraform-check.mjs"],
+  "readOnlyCommands": [
+    "npm ci --ignore-scripts",
+    "npm test",
+    "node --test --test-reporter=tap",
+    "node scripts/check.mjs",
+    "node scripts/inputs.mjs",
+    "node scripts/content-check.mjs",
+    "node scripts/terraform-check.mjs --schema",
+    "node scripts/terraform-check.mjs --validate",
+    "node scripts/terraform-check.mjs --mock"
+  ],
+  "root": "infra",
+  "profile": "ws2-personal-web-v1",
+  "workflowPaths": {
+    "guide": ".github/workflows/guide.yml",
+    "quality": ".github/workflows/quality.yml",
+    "learner": ".github/workflows/learner-checks.yml",
+    "delivery": ".github/workflows/delivery.yml",
+    "cleanup": ".github/workflows/cleanup.yml"
+  },
+  "jobs": {
+    "validation": "Validate workshop inputs",
+    "preflight": "Verify scoped workshop policy",
+    "liveValidation": "Validate reviewed workshop revision",
+    "plan": "Create encrypted workshop plan",
+    "apply": "Apply exact workshop plan",
+    "packaging": "Package and deploy workshop app",
+    "verification": "Verify deployed workshop",
+    "followup": "Confirm no-change",
+    "destroyPlan": "Create encrypted workshop plan",
+    "destroy": "Apply exact workshop plan",
+    "absence": "Verify workload absence"
+  },
+  "inputValidationStep": "Validate participant input",
+  "observationStepPrefix": "AgentAlvine readback",
+  "sections": [
+    {
+      "number": 1,
+      "title": "Enterprise Git and YAML checks",
+      "steps": [
+        { "id": "s1-1", "title": "Open your copy and push a task branch", "lesson": ".github/steps/s1-1.md", "gate": "task-push" },
+        { "id": "s1-2", "title": "Install the credential-free checks workflow", "lesson": ".github/steps/s1-2.md", "gate": "installed-workflow" },
+        { "id": "s1-3", "title": "Open your learner pull request", "lesson": ".github/steps/s1-3.md", "gate": "open-pr" },
+        { "id": "s1-4", "title": "Inspect successful current-revision checks", "lesson": ".github/steps/s1-4.md", "gate": "current-ci" }
+      ]
+    },
+    {
+      "number": 2,
+      "title": "Name, inspect and create your environment",
+      "steps": [
+        { "id": "s2-1", "title": "Change and validate your participant input", "lesson": ".github/steps/s2-1.md", "gate": "participant-change" },
+        { "id": "s2-2", "title": "Inspect the current input pull request and checks", "lesson": ".github/steps/s2-2.md", "gate": "input-pr-ci" },
+        { "id": "s2-3", "title": "Observe the real main delivery and app packaging", "lesson": ".github/steps/s2-3.md", "gate": "initial-delivery" },
+        { "id": "s2-4", "title": "Observe the deployed workshop verification", "lesson": ".github/steps/s2-4.md", "gate": "initial-verification" }
+      ]
+    },
+    {
+      "number": 3,
+      "title": "Reject an invalid input and safely update",
+      "steps": [
+        { "id": "s3-1", "title": "Locate your preceding deployment receipt", "lesson": ".github/steps/s3-1.md", "gate": "initial-receipt" },
+        { "id": "s3-2", "title": "Observe the intended purple-theme validation failure", "lesson": ".github/steps/s3-2.md", "gate": "purple-rejection" },
+        { "id": "s3-3", "title": "Fix to green iteration 02 and observe fresh delivery", "lesson": ".github/steps/s3-3.md", "gate": "updated-delivery" },
+        { "id": "s3-4", "title": "Observe verification in that same update run", "lesson": ".github/steps/s3-4.md", "gate": "updated-verification" }
+      ]
+    },
+    {
+      "number": 4,
+      "title": "Converge and separately clean up your workload",
+      "steps": [
+        { "id": "s4-1", "title": "Locate your updated deployment receipt", "lesson": ".github/steps/s4-1.md", "gate": "updated-receipt" },
+        { "id": "s4-2", "title": "Observe the explicit read-only followup", "lesson": ".github/steps/s4-2.md", "gate": "no-change" },
+        { "id": "s4-3", "title": "Observe the separately authorized exact cleanup", "lesson": ".github/steps/s4-3.md", "gate": "authorized-destroy" },
+        { "id": "s4-4", "title": "Observe workload absence and retain cleanup guidance", "lesson": ".github/steps/s4-4.md", "gate": "workload-absence" }
+      ]
+    }
+  ]
+}

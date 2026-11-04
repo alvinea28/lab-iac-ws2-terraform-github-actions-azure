@@ -1,0 +1,7 @@
+.columns > *, .navigation li, .publisher { min-width: 0; overflow-wrap: anywhere; }
+.navigation li::before { flex-shrink: 0; }
+.comment-example { border: 1px solid #d5e0ee; padding: 14px; border-radius: 9px; background: #f8fafc; }
+.comment-example p { font-size: 10px; color: #64748b; }
+.comment-example textarea { display: block; width: 100%; padding: 10px; resize: none; border: 1px solid #c9d6e7; border-radius: 6px; font: 12px/1.6 Consolas, monospace; background: white; }
+.comment-example button { margin-top: 9px; padding: 7px 13px; border: 0; border-radius: 6px; background: #16834a; color: white; font-weight: 650; }
+@media (max-width: 750px) { .publisher { padding: 18px; } .navigation { padding: 20px; } }

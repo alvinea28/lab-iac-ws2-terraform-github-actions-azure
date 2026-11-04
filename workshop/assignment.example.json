@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "mode": "offline",
+  "participant_name": "alex",
+  "learner_user_ids": [],
+  "instance_number": "001",
+  "network_slot": 21,
+  "location": "southeastasia",
+  "allowed_web_cidr": "203.0.113.0/24",
+  "subscription_id": "11111111-1111-4111-8111-111111111111",
+  "tenant_id": "22222222-2222-4222-8222-222222222222",
+  "app_identity_id": "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-instructor-bootstrap/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-example",
+  "owner": "training-owner",
+  "cost_center": "training",
+  "expires_at": "2099-01-01T00:00:00Z"
+}

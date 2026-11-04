@@ -1,0 +1,13 @@
+{
+  "name": "ws2-personal-welcome",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22 <25" },
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": {
+    "@azure/identity": "4.14.1",
+    "@azure/storage-blob": "12.34.0",
+    "express": "5.3.0"
+  }
+}

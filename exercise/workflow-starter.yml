@@ -1,0 +1,32 @@
+# Learning buffer only. Complete the TWO gaps from validation-workflow.yml,
+# then save the complete document as the single installed learner-checks.yml.
+# This file is OUTSIDE .github/workflows and cannot execute.
+name: Learner checks
+on:
+  push:
+    branches: ['lab/**', 'workshop/**', dev, main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: Validate workshop inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.16.0
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.16.1
+          terraform_wrapper: false
+      - run: npm ci --ignore-scripts
+      - name: Validate participant input
+        run: REPLACE_WITH_INPUT_CHECK
+      - name: Validate the backend-free mocked infrastructure
+        run: REPLACE_WITH_MOCK_CHECK

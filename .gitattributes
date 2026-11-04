@@ -1,0 +1,14 @@
+* text=auto
+*.md text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.tf text eol=lf
+*.hcl text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.svg text eol=lf
+*.png -text
+*.webp -text
