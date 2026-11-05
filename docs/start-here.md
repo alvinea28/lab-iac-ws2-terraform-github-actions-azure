@@ -15,7 +15,10 @@ Install from official sources: [Git](https://git-scm.com/downloads),
 [HashiCorp Terraform extension](https://marketplace.visualstudio.com/items?itemName=HashiCorp.terraform).
 Use the signed installers/normal OS verification. Do not disable TLS, replace
 global PATH or loosen a machine execution policy. Reopen VS Code after installing.
-Copilot is optional. Azure CLI is **not needed** for offline checks or Actions OIDC.
+Participants already have Copilot licenses; optional activities are confined to
+Sections 2 and 3 and always include the same copy/manual path. Its availability
+is **not** a setup or completion gate. Azure CLI is **not needed** for offline
+checks or Actions OIDC.
 
 The instructor provides a **private copy** in the permitted Enterprise organization
 and enrolls your immutable user ID(s). Where policy allows you to copy, choose

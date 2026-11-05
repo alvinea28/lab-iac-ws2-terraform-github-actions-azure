@@ -15,6 +15,12 @@
   image manifest, step labels and pinned action references.
 - The supplied app is tested over actual local HTTP with injected Blob probes;
   missing Azure settings produce **pending**, not fabricated private access.
+- Sections 2/3 contain exactly three optional Copilot techniques each. Content/input
+  regressions exercise the published copyable examples and read-only HCL reference.
+  Full-course synthetic regressions load all sixteen real lessons and compare
+  reviewed assisted candidates with copy/manual continuation through the same
+  rejection, fix, three pauses, saved-run verification and final absence gates.
+  They invoke **no model**, inspect no license/usage and require no transcript.
 
 `npm run check` is the composite credential-free content/schema/mocks/package check.
 `npm test` executes the Node suites. `node scripts/preview.mjs` serves the local
@@ -28,7 +34,7 @@ but do not establish that a new private copy's real enrollment, issue events or
 Enterprise permissions are configured. Source Preview stays read-only and ungraded.
 
 Real source CI/Preview URLs and final local counts are recorded in the
-[daily report](daily%20work%20report/2026-11-04.md) after publication. Do not treat
+[daily report](daily%20work%20report/2026-11-05.md) after publication. Do not treat
 old scrollback, skipped jobs or a different commit's run as current proof.
 
 Live readiness, provider/region capacity, RG/RBAC/bootstrap grants, actual OIDC

@@ -23,6 +23,27 @@ The 160-minute activity target is unmeasured; advance setup, cloud waits and pau
 
 Section 4 has no fourth transition command. Genuine final absence verification completes/closes the Exercise while keeping the **entire final lesson and retention instructions visible**. No manual evidence PR, check command, checkbox update or fabricated review is required.
 
+## Optional Copilot practice — only Sections 2 and 3
+
+Participants already hold licenses. Follow the [standard context/prompt/review/test routine](../docs/parameters.md#copilot-techniques--sections-2-and-3-only)
+in **steps 1–3 of Section 2 and steps 1–3 of Section 3**, never more than three
+activities per section. The remaining steps and all of Sections 1/4 have no
+Copilot task. There is no fifth step, AI grading or change to course history.
+
+Section 2 practices constrained JSON generation, review of a supplied Terraform
+resource and explanation of the delivery chain. Section 3 practices stable-name
+reasoning, diagnosis of an intentional failure and a minimal validated correction.
+Every activity includes **Fallback — no Copilot needed**: exact copyable expected
+code/fix or a read-only checklist/answer. Chat may be skipped, blocked or exhausted;
+do not wait for access or accept unrelated generated changes. The supplied HCL is
+already implemented; compare it, never duplicate or modify protected infrastructure.
+
+Both paths continue through the same initial input, actual checks/delivery, recorded
+purple rejection, green update, same IDs, no-change and separately authorized cleanup.
+Use the same owning clone/root/state and exactly three section comments; no prompt,
+transcript, AI commit or license check is a prerequisite. Instructor cloud readiness
+remains mandatory even when the authoring fallback is available.
+
 ## Know the five input strings
 
 Read [parameters and valid examples](../docs/parameters.md); edit only [exercise/participant.json](../exercise/participant.json). Unknown/missing fields, wrong types and protected overrides reject. In lesson prose, replace `<name>` with the approved name; do not enter angle brackets into the JSON.

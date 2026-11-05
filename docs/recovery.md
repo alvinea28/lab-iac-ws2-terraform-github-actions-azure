@@ -5,6 +5,9 @@
 | Wrong files/owner/remote | Reopen the private clone and read `git remote -v`; preserve work, never reset another clone |
 | Browser works but clone/push fails | Complete the initiated Git Credential Manager/SSO flow for the invited account; author email is not authentication |
 | npm.ps1 blocked on Windows | Use `npm.cmd`; do not change machine policy |
+| Optional Chat unavailable, signed out, blocked, slow or limited in Sections 2/3 | Use the lesson's **Fallback — no Copilot needed** immediately; no license upgrade, transcript or extra gate |
+| Suggested JSON changes a frozen name/001 or adds fields | Reject it; copy the lesson's complete expected JSON using your existing approved name, inspect the diff and run the unchanged validator |
+| Suggested Terraform/workflow/role changes | Do not apply; the supplied RG example is read-only comparison. Keep the approved blueprint/guards and use the explicit fallback |
 | Wrong Node/Terraform/provider version | Use the official pinned installers; do not silently downgrade unrelated projects |
 | No Exercise | Instructor checks Issues/Actions/enrolled user IDs and trusted default guide; no manual issue or fake progress |
 | YAML rejected | Compare the complete canonical reference and indentation; no extra writer/secret/OIDC/PR target code |
@@ -22,3 +25,7 @@ No manual checkbox, evidence PR or run-ID submission is required. The guide uses
 actual metadata, not claims that a human installed software/clicked the portal.
 Mocks, screenshots of references and skipped cloud jobs never establish live success.
 Keep private logs/state/plans/keys out of issues and this template.
+
+The [optional authoring routine](parameters.md#copilot-techniques--sections-2-and-3-only)
+never replaces real section evidence. Manual and assisted authors keep the same
+branch/PR, name/001, receipts, three boundary comments and cleanup ownership.

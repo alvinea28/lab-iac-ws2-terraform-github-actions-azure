@@ -3,10 +3,13 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import guide from '../.github/agentalvine/guide.cjs';
+import { FIELDS, parseParticipantJson, validateParticipant as validateProductionParticipant, deriveNames } from '../scripts/inputs.mjs';
 
 // Entirely synthetic Octokit/server metadata. Nothing executes learner source,
 // shells out, signs in, calls a network, downloads a log/artifact, dispatches a
 // workflow or touches Azure/state. These are observer contracts, NOT live proof.
+// Assisted answers below are deterministic test candidates, not an actual LLM
+// or Copilot session. No LLM, live GitHub, Azure or Copilot service is invoked.
 const CONFIG = guide.loadCourse();
 const NOW = Date.parse('2026-11-04T10:00:00.000Z');
 const BASE = 'a'.repeat(40);
@@ -1539,7 +1542,7 @@ test('actual current lessons render absolute links at startup and after a human 
   const body = f.issues.get(1).body;
   assert.ok(body.includes(`](https://github.com/${f.repository.full_name}/blob/${TASK}/exercise/participant.json)`));
   assert.ok(body.includes(`](${trusted}/docs/instructor-setup.md)`));
-  assert.ok(body.includes(`](${trusted}/docs/parameters.md)`));
+  assert.ok(body.includes(`](${trusted}/docs/parameters.md#copilot-techniques--sections-2-and-3-only)`));
   assert.ok(body.includes(`](${publicImages}/s2-1.png)`));
   assert.equal(/\]\(\.\.?\//.test(body), false);
   assert.deepEqual(f.records('step'), receipts);
@@ -1555,6 +1558,301 @@ for (const section of CONFIG.sections) for (const [index, step] of section.steps
     assert.ok(body.includes(`](https://github.com/training/learner-copy/blob/${BASE}/${step.lesson})`));
     assert.equal(/\]\(\.\.?\//.test(body), false);
     for (const match of body.matchAll(/\]\(([^\s)]+)\)/g)) assert.equal(new URL(match[1]).protocol, 'https:');
+  });
+}
+
+function publishedSourceFixture(options = {}) {
+  const f = new Fixture(options);
+  for (const section of CONFIG.sections) for (const step of section.steps) f.lessons.set(step.lesson, sourceLesson(step));
+  assert.equal(f.lessons.size, 16, 'Every gate must load its actual published lesson, never the default synthetic lesson.');
+  for (const filename of [...CONFIG.ciTrustedPaths, CONFIG.participantPath])
+    f.files.get(BASE)[filename] = readFileSync(new URL(`../${filename}`, import.meta.url), 'utf8');
+  return f;
+}
+
+function publishedFence(f, id, language) {
+  const step = CONFIG.sections.flatMap(section => section.steps).find(step => step.id === id);
+  const lesson = f.lessons.get(step.lesson).replace(/\r\n/g, '\n');
+  const matches = [...lesson.matchAll(/^```([^\n]*)\n([\s\S]*?)^```[ \t]*$/gm)];
+  assert.equal(matches.length, 1, `${id}: retain exactly one complete example.`);
+  assert.equal(matches[0][1], language);
+  return matches[0][2];
+}
+
+function publishedAnswerPath(f, mode) {
+  const initial = publishedFence(f, 's2-1', 'json').replaceAll('<name>', 'li');
+  const fragment = publishedFence(f, 's3-2', 'json').replace(/\n$/, '');
+  assert.equal(fragment.split('\n').length, 1, 'Purple is a line replacement, not a whole-file answer.');
+  assert.equal((initial.match(/^[ \t]*"page_theme": "blue",$/gm) ?? []).length, 1);
+  const manual = {
+    initial,
+    purple: initial.replace(/^[ \t]*"page_theme": "blue",$/m, fragment),
+    updated: publishedFence(f, 's3-3', 'json').replaceAll('<name>', 'li'),
+  };
+  // Independent, deliberately reordered/minified candidates make the assisted
+  // branch exercise different actual file bytes, not a relabeled manual call.
+  const reviewed = {
+    initial: '{"workshop_iteration":"01","page_theme":"blue","app_message":"Hello from li","instance_number":"001","participant_name":"li"}\n',
+    purple: '{"workshop_iteration":"01","page_theme":"purple","app_message":"Hello from li","instance_number":"001","participant_name":"li"}\n',
+    updated: '{"workshop_iteration":"02","page_theme":"green","app_message":"Updated by li","instance_number":"001","participant_name":"li"}\n',
+  };
+  const result = {};
+  for (const stage of ['initial', 'purple', 'updated']) {
+    const expected = parseParticipantJson(Buffer.from(manual[stage]));
+    const candidate = parseParticipantJson(Buffer.from(reviewed[stage]));
+    assert.notEqual(reviewed[stage], manual[stage]);
+    assert.deepEqual(candidate, expected, `${stage}: review the candidate against the real published answer.`);
+    assert.equal(jsonHash(candidate), jsonHash(expected));
+    if (stage === 'purple') {
+      assert.throws(() => validateProductionParticipant(expected, 'li'), /^AssertionError.*page_theme must be blue, green or orange/);
+      assert.deepEqual(validateProductionParticipant({ ...candidate, page_theme: 'blue' }, 'li'),
+        validateProductionParticipant(parseParticipantJson(Buffer.from(manual.initial)), 'li'));
+    } else {
+      assert.deepEqual(deriveNames(validateProductionParticipant(candidate, 'li')), deriveNames(validateProductionParticipant(expected, 'li')));
+    }
+    const text = mode === 'reviewed-assisted' ? reviewed[stage] : manual[stage];
+    result[stage] = { text, value: parseParticipantJson(Buffer.from(text)), digest: jsonHash(expected) };
+  }
+  assert.deepEqual(FIELDS.filter(field => result.initial.value[field] !== result.updated.value[field]),
+    ['app_message', 'page_theme', 'workshop_iteration']);
+  assert.deepEqual(deriveNames(result.initial.value), deriveNames(result.updated.value));
+  assert.equal(deriveNames(result.updated.value).resourceGroup, 'rg-li-001');
+  assert.equal(deriveNames(result.updated.value).storage, 'stli001');
+  return result;
+}
+
+function stagePublishedAnswer(f, sha, stage, options = {}) {
+  const actual = parseParticipantJson(Buffer.from(stage.text));
+  assert.deepEqual(actual, stage.value);
+  if (actual.page_theme === 'purple') {
+    assert.throws(() => validateProductionParticipant(actual, 'li'), /page_theme must be blue, green or orange/);
+    validateProductionParticipant({ ...actual, page_theme: 'blue' }, 'li');
+  } else validateProductionParticipant(actual, 'li');
+  const run = f.task(sha, { ...options, participant: actual });
+  f.files.get(sha)[CONFIG.participantPath] = stage.text;
+  assert.equal(jsonHash(parseParticipantJson(Buffer.from(f.files.get(sha)[CONFIG.participantPath]))), stage.digest);
+  return run;
+}
+
+function assertEntirePublishedLesson(body, f, step, learnerSha) {
+  const lesson = f.lessons.get(step.lesson);
+  const trusted = `https://github.com/${f.repository.full_name}/blob/${BASE}`;
+  const learner = `https://github.com/${f.repository.full_name}/blob/${learnerSha}`;
+  // Published lessons have simple inline relative destinations. Independently
+  // rewrite only destinations; prose, fences, fallback answers and CRLF stay exact.
+  const expected = lesson.replace(/\]\(\.\.\/\.\.\/([^\s)]+)\)/g, (_, target) => {
+    if (/^docs\/images\/[^/]+\.png$/.test(target)) return `](${publicImages}/${target.split('/').at(-1)})`;
+    return `](${target === CONFIG.participantPath || target.startsWith('infra/') ? learner : trusted}/${target})`;
+  });
+  assert.ok(body.includes(expected), `${step.id}: the complete real lesson/fallback must survive rendering.`);
+  assert.equal(/\]\(\.\.?\//.test(body), false, step.id);
+  assert.ok(body.includes(`](${trusted}/${step.lesson})`), step.id);
+  assert.equal(body.includes('## Full lesson '), false, 'Never substitute the synthetic default lesson.');
+  const fences = text => [...text.replace(/\r\n/g, '\n').matchAll(/^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm)].map(match => match[0]);
+  assert.deepEqual(fences(body), fences(lesson), `${step.id}: preserve every actual fenced example.`);
+}
+
+for (const mode of ['reviewed-assisted', 'copy/manual']) {
+  test(`all 16 dependent gates with actual lessons and ${mode} answers (synthetic metadata, no LLM/live services)`, async () => {
+    const f = publishedSourceFixture({ live: true }); // Exact approved identity, but ONLY fake server metadata.
+    const answers = publishedAnswerPath(f, mode);
+    const courseDigest = jsonHash(CONFIG);
+    const step = id => CONFIG.sections.flatMap(section => section.steps).find(step => step.id === id);
+    const currentLesson = async id => {
+      const state = await f.state();
+      assertEntirePublishedLesson(f.issues.get(1).body, f, step(id), state.receipts.at(-1)?.revision ?? BASE);
+    };
+    const acceptedCommands = [];
+    const advance = async section => {
+      const before = clone(f.records('step'));
+      const gate = f.records('gate').at(-1);
+      const event = f.command();
+      assert.equal(event.payload.comment.body, 'proceed to next section');
+      const result = await f.fire(event);
+      assert.equal(result.status, 'advanced');
+      assert.equal(result.section, section);
+      assert.equal(result.step, 1);
+      assert.equal(result.progress, (section - 1) * 4);
+      assert.deepEqual(f.records('step'), before, 'A boundary opens only step 1; it awards no step.');
+      const consumed = f.records('advance').at(-1);
+      assert.equal(consumed.commandCommentId, event.payload.comment.id);
+      assert.equal(consumed.gateCommentId, [...f.comments.values()].find(comment => recordOf(comment)?.kind === 'gate' &&
+        recordOf(comment).section === gate.section).id);
+      assert.ok(Date.parse(consumed.commandCreatedAt) > Date.parse(consumed.promptCreatedAt));
+      acceptedCommands.push(event.payload.comment.id);
+      const writes = f.writes.length;
+      assert.equal((await f.fire(event)).status, 'ignored', 'The same comment cannot advance again.');
+      assert.equal(f.writes.length, writes);
+      assert.deepEqual(f.records('step'), before);
+      await currentLesson(`s${section}-1`);
+    };
+    const withholdCompletedJob = (run, name) => {
+      const job = f.jobs.get(run.id).find(job => job.name === name);
+      assert.ok(job);
+      f.jobs.set(run.id, f.jobs.get(run.id).filter(candidate => candidate.id !== job.id));
+      // Simulate delayed API visibility, not a future job retroactively changing
+      // immutable historical receipts. Retain the original completed timestamps.
+      return () => f.jobs.get(run.id).push(job);
+    };
+
+    assert.deepEqual(await f.fire(), { status: 'started', section: 1, step: 1, progress: 0 });
+    await currentLesson('s1-1');
+    const early = f.command();
+    assert.equal((await f.fire(early)).status, 'early-command');
+    assert.equal(f.records('advance').length, 0);
+    const starter = validateProductionParticipant(parseParticipantJson(Buffer.from(f.files.get(BASE)[CONFIG.participantPath])));
+    const readyMessage = f.lessons.get(step('s1-1').lesson).match(/from `Hello from alex` to `([^`]+)`/);
+    assert.ok(readyMessage, 'Use the actual Section 1 edit.');
+    const firstBranch = 'lab/first-check';
+    f.task(TASK, { branch: firstBranch, participant: { ...starter, app_message: readyMessage[1] } });
+    f.pr(TASK, { branch: firstBranch });
+    assert.equal((await f.fire()).progress, 4);
+    const originalReceipts = clone(f.records('step'));
+    assert.equal((await f.fire()).status, 'paused', 'An early command must not be queued at the gate.');
+    assert.equal(f.records('advance').length, 0);
+    await currentLesson('s1-4');
+    await advance(2);
+
+    const initialCi = stagePublishedAnswer(f, INPUT, answers.initial, { branch: firstBranch });
+    f.updatePr(1, INPUT);
+    assert.equal((await f.fire()).progress, 6);
+    assert.equal(f.records('step').find(record => record.stepId === 's2-2').evidence.runId, initialCi.id);
+    f.merge(1, MAIN1);
+    const initialRun = f.liveRun(MAIN1);
+    const revealInitialVerification = withholdCompletedJob(initialRun, CONFIG.jobs.verification);
+    assert.equal((await f.fire()).progress, 7, 'Apply/package does not prove deployment verification.');
+    assert.equal(f.issues.get(1).state, 'open');
+    revealInitialVerification();
+    assert.equal((await f.fire()).progress, 8);
+    assert.equal((await f.fire()).status, 'paused');
+    await currentLesson('s2-4');
+    await advance(3);
+
+    assert.equal((await f.fire()).progress, 9, 'The preceding own baseline receipt is required before rejection.');
+    const updateBranch = 'lab/theme-update';
+    const rejected = stagePublishedAnswer(f, PURPLE, answers.purple, { branch: updateBranch, result: 'failure' });
+    f.pr(PURPLE, { branch: updateBranch });
+    assert.equal((await f.fire()).progress, 10);
+    const purpleReceipt = clone(f.records('step').find(record => record.stepId === 's3-2'));
+    assert.equal(purpleReceipt.revision, PURPLE);
+    assert.equal(purpleReceipt.evidence.rejection, 'page_theme:purple');
+    assert.equal(purpleReceipt.evidence.runId, rejected.id);
+    assert.equal(purpleReceipt.evidence.participantSha256, answers.purple.digest);
+    assert.equal(purpleReceipt.evidence.validatorSha256, hash(f.files.get(BASE)[CONFIG.validatorPath]));
+    assert.equal(f.jobs.get(rejected.id)[0].steps[0].name, CONFIG.inputValidationStep);
+    assert.equal(f.jobs.get(rejected.id)[0].steps[0].conclusion, 'failure');
+    assert.equal(f.branches.get('main').commit.sha, MAIN1, 'Purple is never merged or deployed.');
+
+    const fixedCi = stagePublishedAnswer(f, FIX, answers.updated, { branch: updateBranch });
+    f.updatePr(2, FIX); // Correct the very same PR, not a new unrelated input history.
+    assert.equal(fixedCi.conclusion, 'success');
+    assert.equal((await f.fire()).progress, 10, 'A local correction/green CI is not a new main delivery.');
+    assert.deepEqual(f.records('step').find(record => record.stepId === 's3-2'), purpleReceipt);
+    f.merge(2, MAIN2);
+    const updatedRun = f.liveRun(MAIN2);
+    const revealUpdatedVerification = withholdCompletedJob(updatedRun, CONFIG.jobs.verification);
+    assert.equal((await f.fire()).progress, 11);
+    revealUpdatedVerification();
+    assert.equal((await f.fire()).progress, 12);
+    assert.equal((await f.fire()).status, 'paused');
+    await currentLesson('s3-4');
+    await advance(4);
+
+    assert.equal((await f.fire()).progress, 13);
+    const followup = f.liveRun(MAIN2, 'followup');
+    assert.equal((await f.fire()).progress, 14);
+    assert.equal(f.jobs.get(followup.id).some(job => job.name === CONFIG.jobs.apply), false, 'Followup is read-only.');
+    f.liveRun(MAIN2, 'cleanup', { actor: OUTSIDER });
+    assert.equal((await f.fire()).progress, 14, 'An unassigned cleanup actor cannot supply an authorized receipt.');
+    const cleanup = f.liveRun(MAIN2, 'cleanup', { actor: OWNER });
+    const revealAbsence = withholdCompletedJob(cleanup, CONFIG.jobs.absence);
+    assert.equal(f.permissions.get(OWNER.login), 'admin');
+    assert.equal((await f.fire()).progress, 15, 'Destroy alone cannot close the Exercise.');
+    assert.equal(f.issues.get(1).state, 'open');
+    revealAbsence();
+    assert.deepEqual(await f.fire(), { status: 'completed', section: 4, step: 4, progress: 16 });
+
+    const state = await f.state();
+    const receipt = id => state.receipts.find(receipt => receipt.stepId === id);
+    assert.equal(state.complete, true);
+    assert.equal(f.issues.size, 1);
+    assert.equal(f.issues.get(1).state, 'closed');
+    assert.equal(f.records('gate').length, 3);
+    assert.deepEqual(f.records('advance').map(record => record.commandCommentId), acceptedCommands);
+    assert.equal(new Set(acceptedCommands).size, 3);
+    assert.equal(acceptedCommands.includes(early.payload.comment.id), false);
+    assert.deepEqual(f.records('step').slice(0, 4), originalReceipts);
+    assert.deepEqual(state.receipts.map(receipt => receipt.stepId), CONFIG.sections.flatMap(section => section.steps.map(step => step.id)));
+    assert.deepEqual(state.receipts.map(receipt => receipt.revision),
+      [TASK, TASK, TASK, TASK, INPUT, INPUT, MAIN1, MAIN1, MAIN1, PURPLE, MAIN2, MAIN2, MAIN2, MAIN2, MAIN2, MAIN2]);
+    for (const id of ['s2-1', 's2-2', 's2-3', 's2-4']) assert.equal(receipt(id).evidence.participantSha256, answers.initial.digest);
+    for (const id of ['s3-3', 's3-4', 's4-2', 's4-3', 's4-4']) assert.equal(receipt(id).evidence.participantSha256, answers.updated.digest);
+    for (const [verification, source, run] of [['s2-4', 's2-3', initialRun], ['s3-4', 's3-3', updatedRun], ['s4-4', 's4-3', cleanup]]) {
+      assert.equal(receipt(verification).evidence.runId, run.id);
+      assert.equal(receipt(source).evidence.runId, run.id);
+      assert.equal(receipt(verification).evidence.sourceReceiptHash, receipt(source).hash);
+    }
+    for (const [current, previous] of [['s3-1', 's2-4'], ['s4-1', 's3-4'], ['s4-2', 's3-3'], ['s4-3', 's4-2']])
+      assert.equal(receipt(current).evidence.sourceReceiptHash, receipt(previous).hash);
+    assert.equal(receipt('s4-2').evidence.runId, followup.id);
+    assert.equal(receipt('s4-2').evidence.operation, 'followup');
+    assert.equal(receipt('s4-3').evidence.operation, 'destroy');
+    assert.equal(receipt('s4-3').evidence.workflowPath, CONFIG.workflowPaths.cleanup);
+    assert.equal(receipt('s4-3').evidence.event, 'workflow_dispatch');
+    assert.equal(receipt('s4-3').evidence.actorId, OWNER.id);
+    assert.notEqual(followup.id, cleanup.id);
+    assert.notEqual(initialRun.id, updatedRun.id);
+    assert.ok(Date.parse(receipt('s3-3').evidence.runCreatedAt) > Date.parse(purpleReceipt.evidence.validationCompletedAt));
+    for (const revision of [INPUT, MAIN1, FIX, MAIN2]) {
+      const actual = validateProductionParticipant(parseParticipantJson(Buffer.from(f.files.get(revision)[CONFIG.participantPath])), 'li');
+      assert.deepEqual(deriveNames(actual), deriveNames(answers.initial.value));
+    }
+    assert.ok(f.records().every(record => record.courseDigest === courseDigest));
+    assert.deepEqual(f.config, CONFIG, 'Do not change the course or its ledger hash to add an authoring path.');
+    assert.equal(f.calls.some(call => /copilot|license|transcript|screenshot|completion|chat/i.test(call.name)), false);
+
+    // Reconciliation can coalesce steps. Still render EVERY actual lesson with
+    // its genuine preceding learner SHA and retain all source/fallback bytes.
+    let offset = 0;
+    for (const section of CONFIG.sections) for (const [index, current] of section.steps.entries()) {
+      const prior = { ...state, section: section.number, stepIndex: index, complete: false, gate: null,
+        receipts: state.receipts.slice(0, offset++) };
+      const body = renderLesson(f.lessons.get(current.lesson), { repository: f.repository, state: prior });
+      assertEntirePublishedLesson(body, f, current, prior.receipts.at(-1)?.revision ?? BASE);
+    }
+    await currentLesson('s4-4');
+    const finalBody = f.issues.get(1).body;
+    assert.match(finalBody, /Complete — 16\/16 verified/);
+    assert.match(finalBody, /Sections 1: 4\/4 · 2: 4\/4 · 3: 4\/4 · 4: 4\/4/);
+    assert.match(finalBody, /No fourth section command is needed/);
+    const writes = f.writes.length;
+    const records = clone(f.records());
+    assert.equal((await f.fire()).status, 'ignored', 'Completion needs no fourth command.');
+    assert.equal((await f.fire(f.command())).status, 'ignored', 'An unnecessary fourth command has no authority.');
+    assert.equal(f.writes.length, writes);
+    assert.deepEqual(f.records(), records);
+    assert.equal(f.issues.get(1).body, finalBody);
+    assert.deepEqual(f.failures, []);
+  });
+
+  test(`an unapproved copy stays live-blocked with ${mode} source answers even with pinned fake successful runs`, async () => {
+    const f = publishedSourceFixture({ live: true, repository: { id: 900001, full_name: 'training/unapproved-copy',
+      name: 'unapproved-copy', owner: { login: 'training' } } });
+    const answers = publishedAnswerPath(f, mode);
+    await sectionOne(f);
+    await enterTwo(f);
+    stagePublishedAnswer(f, INPUT, answers.initial);
+    f.updatePr(1, INPUT);
+    assert.equal((await f.fire()).progress, 6);
+    f.merge(1, MAIN1);
+    f.liveRun(MAIN1);
+    const result = await f.fire();
+    assert.equal(result.progress, 6);
+    assert.match(result.reason, /two exact approved private simulation IDs\/names/);
+    assert.equal(f.records('step').some(record => record.stepId === 's2-3'), false);
+    assert.equal(f.records('advance').length, 1);
+    assert.equal(f.issues.get(1).state, 'open');
+    assert.deepEqual(f.config, CONFIG);
   });
 }
 
